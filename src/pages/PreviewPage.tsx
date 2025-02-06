@@ -9,7 +9,7 @@ export default function FileUploader() {
   const navigate = useNavigate();
 
   const { getRootProps, getInputProps } = useDropzone({
-    accept: {
+    accept: { 
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"]
     },
