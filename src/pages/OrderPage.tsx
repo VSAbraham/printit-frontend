@@ -23,10 +23,12 @@ const OrderPage = () => {
   };
 
   // Only process location state files on initial mount
+  var addedPreviousFiles = false;
   useEffect(() => {
     const uploadedFiles = location.state?.uploadedFiles;
-    if (uploadedFiles && uploadedFiles.length > 0 && files.length === 0) {
-      handleFileAddition(uploadedFiles);
+    if (!addedPreviousFiles && uploadedFiles && uploadedFiles.length > 0 && files.length === 0) {
+      addedPreviousFiles = true;
+        handleFileAddition(uploadedFiles);
     }
   }, []); // Empty dependency array to run only once
 
@@ -71,6 +73,7 @@ const OrderPage = () => {
     try {
       // Get unique files by creating a Map with file key as the key
       const uniqueFilesMap = new Map();
+      console.log("new files", newFiles);
       newFiles.forEach(file => {
         const fileKey = file.name + file.lastModified;
         if (!files.some(existingFile => existingFile.name + existingFile.lastModified === fileKey)) {
