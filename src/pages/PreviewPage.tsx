@@ -1,11 +1,15 @@
 import React, { useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "../components/ui/button";
+import { ProcessingScreen } from "../components/ProcessingScreen";
 import { X, Upload, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import LoadingScreen from "../components/LoadingScreen";
 
 export default function FileUploader() {
   const [files, setFiles] = useState<{file: File, previewUrl: string}[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const { getRootProps, getInputProps } = useDropzone({
@@ -31,15 +35,34 @@ export default function FileUploader() {
 
   const handleProceed = () => {
     if (files.length > 0) {
-      navigate('/order', { 
-        state: { 
-          uploadedFiles: files.map(f => f.file) 
-        } 
-      });
+      setIsLoading(true); // Show loading screen
+      setTimeout(() => {
+        setIsLoading(false);
+        navigate('/order', { 
+          state: { 
+            uploadedFiles: files.map(f => f.file) 
+          } 
+        });
+      }, 3000); // 5 second delay
     }
   };
 
   const [previewModal, setPreviewModal] = useState<{previewUrl: string, index: number} | null>(null);
+
+ 
+
+  const handleProcessingComplete = (processedFiles: File[]) => {
+    setIsProcessing(false);
+    navigate('/order', { 
+      state: { files: processedFiles },
+      replace: true 
+    });
+  };
+
+  const handleProcessingCancel = () => {
+    setIsProcessing(false);
+  };
+
 
   return (
     <div className="p-6 bg-gray-100 rounded-lg shadow-lg max-w-2xl mx-auto">
@@ -54,6 +77,9 @@ export default function FileUploader() {
           <span className="font-semibold text-blue-500">DOCX</span> file
         </p>
       </div>
+
+      {/* Add Loading Screen */}
+      {isLoading && <LoadingScreen />}
 
       {files.length > 0 && (
         <div className="mt-4">
@@ -120,6 +146,17 @@ export default function FileUploader() {
           Proceed to Print
         </Button>
       )}
+
+                   
+      {/* Processing Screen */}
+      {isProcessing && (
+        <ProcessingScreen
+          files={files.map(f => f.file)}
+          onCancel={handleProcessingCancel}
+          onComplete={handleProcessingComplete}
+        />
+      )}
+
     </div>
   );
 }

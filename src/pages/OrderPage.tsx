@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -7,6 +7,7 @@ import { Upload, X, Plus } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 
 const OrderPage = () => {
+  const navigate = useNavigate();
   const location = useLocation();
   const [files, setFiles] = useState<File[]>([]);
   const [pageCount, setPageCount] = useState(0);
@@ -28,7 +29,7 @@ const OrderPage = () => {
     const uploadedFiles = location.state?.uploadedFiles;
     if (!addedPreviousFiles && uploadedFiles && uploadedFiles.length > 0 && files.length === 0) {
       addedPreviousFiles = true;
-        handleFileAddition(uploadedFiles);
+      handleFileAddition(uploadedFiles);
     }
   }, []); // Empty dependency array to run only once
 
@@ -170,6 +171,7 @@ const OrderPage = () => {
     setCopies(1);
     setDoubleSided(false);
     setError('');
+    navigate('/preview',{replace: true});
   };
 
   return (
