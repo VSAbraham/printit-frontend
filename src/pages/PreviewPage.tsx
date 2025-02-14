@@ -43,7 +43,7 @@ export default function FileUploader() {
             uploadedFiles: files.map(f => f.file) 
           } 
         });
-      }, 3000); // 5 second delay
+      }, 2000); // 2 second delay
     }
   };
 

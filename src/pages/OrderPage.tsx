@@ -6,38 +6,57 @@ import { Input } from "../components/ui/input";
 import { Upload, X, Plus } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 
+interface FilePreferences {
+  printType: 'bw' | 'color';
+  copies: number;
+  doubleSided: boolean;
+}
+
+interface FileWithPreferences {
+  file: File;
+  pageCount: number;
+  preferences: FilePreferences;
+}
+
 const OrderPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [files, setFiles] = useState<File[]>([]);
-  const [pageCount, setPageCount] = useState(0);
-  const [printType, setPrintType] = useState<'bw' | 'color'>('bw');
+  const [filesWithPrefs, setFilesWithPrefs] = useState<FileWithPreferences[]>([]);
   const [loading, setLoading] = useState(false);
-  const [copies, setCopies] = useState(1);
-  const [doubleSided, setDoubleSided] = useState(false);
   const [error, setError] = useState<string>('');
-  const [pageCountMap, setPageCountMap] = useState<Map<string, number>>(new Map());
 
   const prices = {
     bw: 2,   // Price per page for black & white
     color: 8 // Price per page for color
   };
 
+ // Monitor filesWithPrefs and navigate to preview if no files are present
+  useEffect(() => {
+    if (filesWithPrefs.length === 0 && !loading) {
+      const timer = setTimeout(() => {
+        navigate('/preview', { replace: true });
+      }, 100); // Small delay to ensure state is settled
+      
+      return () => clearTimeout(timer);
+    }
+  }, [filesWithPrefs, loading]);
+
+  // Redirect to preview if no files are present
+  useEffect(() => {
+    if (!loading && filesWithPrefs.length === 0 && !location.state?.uploadedFiles) {
+      navigate('/preview', { replace: true });
+    }
+  }, [filesWithPrefs, loading, location.state, navigate]);
+  
   // Only process location state files on initial mount
   var addedPreviousFiles = false;
   useEffect(() => {
     const uploadedFiles = location.state?.uploadedFiles;
-    if (!addedPreviousFiles && uploadedFiles && uploadedFiles.length > 0 && files.length === 0) {
+    if (!addedPreviousFiles && uploadedFiles && uploadedFiles.length > 0 && filesWithPrefs.length === 0) {
       addedPreviousFiles = true;
       handleFileAddition(uploadedFiles);
     }
-  }, []); // Empty dependency array to run only once
-
-  useEffect(() => {
-    // Update total page count whenever pageCountMap changes
-    const total = Array.from(pageCountMap.values()).reduce((sum, count) => sum + count, 0);
-    setPageCount(total);
-  }, [pageCountMap]);
+  }, []);
 
   const countPDFPages = async (file: File): Promise<number> => {
     try {
@@ -72,17 +91,11 @@ const OrderPage = () => {
     setError('');
     
     try {
-      // Get unique files by creating a Map with file key as the key
-      const uniqueFilesMap = new Map();
-      console.log("new files", newFiles);
-      newFiles.forEach(file => {
-        const fileKey = file.name + file.lastModified;
-        if (!files.some(existingFile => existingFile.name + existingFile.lastModified === fileKey)) {
-          uniqueFilesMap.set(fileKey, file);
-        }
-      });
-
-      const uniqueNewFiles = Array.from(uniqueFilesMap.values());
+      const uniqueNewFiles = newFiles.filter(newFile => 
+        !filesWithPrefs.some(existing => 
+          existing.file.name + existing.file.lastModified === newFile.name + newFile.lastModified
+        )
+      );
       
       if (uniqueNewFiles.length === 0) {
         setError('These files have already been added');
@@ -90,17 +103,25 @@ const OrderPage = () => {
         return;
       }
 
-      const newPageCounts = new Map(pageCountMap);
+      const newFilesWithPrefs = await Promise.all(
+        uniqueNewFiles.map(async file => {
+          const pageCount = file.type === 'application/pdf' 
+            ? await countPDFPages(file)
+            : await countDOCXPages(file);
+
+          return {
+            file,
+            pageCount,
+            preferences: {
+              printType: 'bw' as const,
+              copies: 1,
+              doubleSided: false
+            }
+          };
+        })
+      );
       
-      for (const file of uniqueNewFiles) {
-        const pages = file.type === 'application/pdf' 
-          ? await countPDFPages(file)
-          : await countDOCXPages(file);
-        newPageCounts.set(file.name + file.lastModified, pages);
-      }
-      
-      setPageCountMap(newPageCounts);
-      setFiles(prevFiles => [...prevFiles, ...uniqueNewFiles]);
+      setFilesWithPrefs(prev => [...prev, ...newFilesWithPrefs]);
     } catch (error) {
       setError(error.message || 'Error processing files');
     } finally {
@@ -113,39 +134,43 @@ const OrderPage = () => {
     if (newFiles.length > 0) {
       handleFileAddition(newFiles);
     }
-    // Reset the input value to allow uploading the same file again
     event.target.value = '';
   };
 
   const handleRemoveFile = (indexToRemove: number) => {
-    const fileToRemove = files[indexToRemove];
-    const fileKey = fileToRemove.name + fileToRemove.lastModified;
-    
-    // Update files array
-    setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
-    
-    // Update page count map
-    setPageCountMap(prevMap => {
-      const newMap = new Map(prevMap);
-      newMap.delete(fileKey);
-      return newMap;
-    });
+    setFilesWithPrefs(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const updateFilePreferences = (index: number, updates: Partial<FilePreferences>) => {
+    setFilesWithPrefs(prev => prev.map((item, i) => 
+      i === index 
+        ? { ...item, preferences: { ...item.preferences, ...updates } }
+        : item
+    ));
+  };
+
+  const calculateFileTotal = (file: FileWithPreferences) => {
+    const totalPages = file.preferences.doubleSided 
+      ? Math.ceil(file.pageCount / 2) 
+      : file.pageCount;
+    return totalPages * file.preferences.copies * 
+      (file.preferences.printType === 'bw' ? prices.bw : prices.color);
   };
 
   const calculateTotal = () => {
-    const totalPages = doubleSided ? Math.ceil(pageCount / 2) : pageCount;
-    return totalPages * copies * (printType === 'bw' ? prices.bw : prices.color);
+    return filesWithPrefs.reduce((sum, file) => sum + calculateFileTotal(file), 0);
   };
 
   const handleSubmit = async () => {
-    if (files.length === 0) return;
+    if (filesWithPrefs.length === 0) return;
 
     const orderData = {
-      files,
-      pageCount,
-      printType,
-      copies,
-      doubleSided,
+      files: filesWithPrefs.map(f => ({
+        file: f.file,
+        pageCount: f.pageCount,
+        preferences: f.preferences,
+        subtotal: calculateFileTotal(f)
+      })),
       totalAmount: calculateTotal()
     };
 
@@ -164,23 +189,18 @@ const OrderPage = () => {
   };
 
   const handleReset = () => {
-    setFiles([]);
-    setPageCount(0);
-    setPageCountMap(new Map());
-    setPrintType('bw');
-    setCopies(1);
-    setDoubleSided(false);
+    setFilesWithPrefs([]);
     setError('');
-    navigate('/preview',{replace: true});
+    navigate('/preview', { replace: true });
   };
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="container mx-auto px-4">
         <Card className="max-w-4xl mx-auto">
-            <CardHeader>
+          <CardHeader>
             <CardTitle className="text-2xl">Print Settings ⚙️</CardTitle>
-            </CardHeader>
+          </CardHeader>
           <CardContent>
             {error && (
               <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-lg">
@@ -216,27 +236,80 @@ const OrderPage = () => {
                   </div>
                 )}
 
-                {files.length > 0 && (
-                  <div className="space-y-2 mt-4">
-                    {files.map((file, index) => (
-                      <div key={file.name + file.lastModified} className="flex items-center justify-between bg-gray-100 p-2 rounded-lg">
-                        <span className="text-sm">
-                          {file.name} ({file.type === 'application/pdf' ? 'PDF' : 'DOCX'})
-                        </span>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleRemoveFile(index)}
-                          className="h-8 w-8 p-0 hover:bg-gray-200"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                {filesWithPrefs.length > 0 && (
+                  <div className="space-y-4 mt-4">
+                    {filesWithPrefs.map((fileWithPref, index) => (
+                      <div key={fileWithPref.file.name + fileWithPref.file.lastModified} 
+                           className="bg-white border rounded-lg p-4 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="font-medium">
+                            {fileWithPref.file.name}
+                          </span>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleRemoveFile(index)}
+                            className="h-8 w-8 p-0 hover:bg-gray-100"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm mb-1">Print Type</label>
+                            <select
+                              value={fileWithPref.preferences.printType}
+                              onChange={(e) => updateFilePreferences(index, { 
+                                printType: e.target.value as 'bw' | 'color' 
+                              })}
+                              className="w-full border rounded-lg p-2 text-sm"
+                            >
+                              <option value="bw">Black & White (₹2/page)</option>
+                              <option value="color">Color (₹8/page)</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm mb-1">Copies</label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={fileWithPref.preferences.copies}
+                              onChange={(e) => updateFilePreferences(index, { 
+                                copies: parseInt(e.target.value) || 1 
+                              })}
+                              className="text-sm"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="mt-3">
+                          <label className="flex items-center space-x-2">
+                            <Input
+                              type="checkbox"
+                              checked={fileWithPref.preferences.doubleSided}
+                              onChange={(e) => updateFilePreferences(index, { 
+                                doubleSided: e.target.checked 
+                              })}
+                              className="w-4 h-4"
+                            />
+                            <span className="text-sm">Double-sided printing</span>
+                          </label>
+                        </div>
+                        
+                        <div className="mt-3 bg-blue-50 p-3 rounded-lg">
+                          <p className="text-sm text-blue-700">Pages: {fileWithPref.pageCount}</p>
+                          <p className="text-sm font-medium mt-1">
+                            Subtotal: ₹{calculateFileTotal(fileWithPref)}
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {files.length === 0 && !loading && (
+                {filesWithPrefs.length === 0 && !loading && (
                   <div className="border-2 border-dashed rounded-lg p-6 text-center">
                     <Upload className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
@@ -246,44 +319,11 @@ const OrderPage = () => {
                 )}
               </div>
 
-              {files.length > 0 && (
+              {filesWithPrefs.length > 0 && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Print Type</label>
-                    <select
-                      value={printType}
-                      onChange={(e) => setPrintType(e.target.value as 'bw' | 'color')}
-                      className="w-full border rounded-lg p-2"
-                    >
-                      <option value="bw">Black & White (₹2/page)</option>
-                      <option value="color">Color (₹8/page)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Number of Copies</label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={copies}
-                      onChange={(e) => setCopies(parseInt(e.target.value) || 1)}
-                    />
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Input
-                      type="checkbox"
-                      checked={doubleSided}
-                      onChange={(e) => setDoubleSided(e.target.checked)}
-                      className="w-4 h-4"
-                    />
-                    <label className="text-sm font-medium">Double-sided printing</label>
-                  </div>
-
                   <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-blue-700">Total Document Pages: {pageCount}</p>
-                    <p className="text-lg font-semibold mt-2">
-                      Total Price: ₹{calculateTotal()}
+                    <p className="text-lg font-semibold">
+                      Total Order Price: ₹{calculateTotal()}
                     </p>
                   </div>
 
@@ -312,4 +352,4 @@ const OrderPage = () => {
   );
 };
 
-export default OrderPage;
+export default OrderPage; 
