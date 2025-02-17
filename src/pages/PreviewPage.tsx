@@ -1,15 +1,11 @@
 import React, { useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "../components/ui/button";
-import { ProcessingScreen } from "../components/ProcessingScreen";
 import { X, Upload, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import LoadingScreen from "../components/LoadingScreen";
 
 export default function FileUploader() {
   const [files, setFiles] = useState<{file: File, previewUrl: string}[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const { getRootProps, getInputProps } = useDropzone({
@@ -35,34 +31,15 @@ export default function FileUploader() {
 
   const handleProceed = () => {
     if (files.length > 0) {
-      setIsLoading(true); // Show loading screen
-      setTimeout(() => {
-        setIsLoading(false);
-        navigate('/order', { 
-          state: { 
-            uploadedFiles: files.map(f => f.file) 
-          } 
-        });
-      }, 2000); // 2 second delay
+      navigate('/order', { 
+        state: { 
+          uploadedFiles: files.map(f => f.file) 
+        } 
+      });
     }
   };
 
   const [previewModal, setPreviewModal] = useState<{previewUrl: string, index: number} | null>(null);
-
- 
-
-  const handleProcessingComplete = (processedFiles: File[]) => {
-    setIsProcessing(false);
-    navigate('/order', { 
-      state: { files: processedFiles },
-      replace: true 
-    });
-  };
-
-  const handleProcessingCancel = () => {
-    setIsProcessing(false);
-  };
-
 
   return (
     <div className="p-6 bg-gray-100 rounded-lg shadow-lg max-w-2xl mx-auto">
@@ -78,9 +55,6 @@ export default function FileUploader() {
         </p>
       </div>
 
-      {/* Add Loading Screen */}
-      {isLoading && <LoadingScreen />}
-
       {files.length > 0 && (
         <div className="mt-4">
           <h3 className="text-lg font-semibold">Files to Print</h3>
@@ -88,7 +62,14 @@ export default function FileUploader() {
             {files.map((fileItem, index) => (
               <div key={index} className="relative p-2 border rounded-lg shadow-md bg-white">
                 <div className="flex items-center justify-center h-32 bg-gray-200 text-gray-700 font-semibold">
-                  {fileItem.file.type === "application/pdf" ? "PDF" : "DOCX"}
+                  {fileItem.file.type === "application/pdf" ? (
+                    <iframe
+                      src={fileItem.previewUrl + "#toolbar=0"}
+                      className="w-full h-full"
+                    ></iframe>
+                  ) : (
+                    <span>DOCX</span>
+                  )}
                 </div>
 
                 <div className="absolute top-1 right-1 flex space-x-1">
@@ -128,11 +109,13 @@ export default function FileUploader() {
                 <X size={24} />
               </button>
             </div>
-            <iframe
-              src={previewModal.previewUrl}
-              className="w-full h-[70vh] border rounded-lg"
-              title="Document Preview"
-            />
+            <div className="w-full h-[70vh] border rounded-lg overflow-hidden">
+              <iframe
+                src={previewModal.previewUrl + "#toolbar=0&navpanes=0&scrollbar=0"}
+                className="w-full h-full"
+                title="Document Preview"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -146,17 +129,6 @@ export default function FileUploader() {
           Proceed to Print
         </Button>
       )}
-
-                   
-      {/* Processing Screen */}
-      {isProcessing && (
-        <ProcessingScreen
-          files={files.map(f => f.file)}
-          onCancel={handleProcessingCancel}
-          onComplete={handleProcessingComplete}
-        />
-      )}
-
     </div>
   );
 }
