@@ -5,6 +5,7 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
   plugins: [react(), tsconfigPaths()],
+  base: "/prinit-frontend/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
