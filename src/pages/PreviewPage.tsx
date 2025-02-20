@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "../components/ui/button";
-import { X, Upload, Eye } from "lucide-react";
+import { X, Upload, Eye, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import LoadingScreen from "../components/LoadingScreen";
 
@@ -12,7 +12,7 @@ export default function FileUploader() {
   const navigate = useNavigate();
 
   const { getRootProps, getInputProps } = useDropzone({
-    accept: { 
+    accept: {   
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"]
     },
@@ -29,6 +29,7 @@ export default function FileUploader() {
 
   const removeFile = (index) => {
     const updatedFiles = files.filter((_, i) => i !== index);
+    URL.revokeObjectURL(files[index].previewUrl);
     setFiles(updatedFiles);
   };
 
@@ -47,6 +48,35 @@ export default function FileUploader() {
   };
 
   const [previewModal, setPreviewModal] = useState<{previewUrl: string, index: number} | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      files.forEach(file => {
+        URL.revokeObjectURL(file.previewUrl);
+      });
+    }
+  }, []);
+
+  const FilePreview = ({ file }) => {
+    if (file.type === "application/pdf") {
+      return ( <div className="flex items-center justify-center h-32 bg-red-50 text-red-700">
+        <div className="flex flex-col items-center">
+          <FileText className="w-8 h-8 mb-2" />
+          <span className="text-xs">PDF</span>
+        </div>
+      </div>
+      );
+    }
+
+  return (
+      <div className="flex items-center justify-center h-32 bg-blue-50 text-blue-700">
+        <div className="flex flex-col items-center">
+          <FileText className="w-8 h-8 mb-2" />
+          <span className="text-xs">DOCX</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="p-6 bg-gray-100 rounded-lg shadow-lg max-w-2xl mx-auto">
@@ -87,6 +117,7 @@ export default function FileUploader() {
                   {fileItem.previewUrl && (
                     <button
                       onClick={() => setPreviewModal({previewUrl: fileItem.previewUrl, index})}
+                      //onClick={() => window.open(fileItem.previewUrl, '_blank')}
                       className="bg-blue-500 text-white p-1 rounded-full hover:bg-blue-600"
                     >
                       <Eye size={16} />
